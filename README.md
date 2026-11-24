@@ -81,5 +81,26 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 数据落库补写链路
+
+数据落库除冲突行数外，另由 `app/services/landing_rewrite.py` 维护四张内存表
+（补写来源、失败记录、确认回执、范围领取），把确认回执、失败记录和可发起的
+补写范围对应起来，专用路由在 `app/routers/landing.py`：
+
+- `GET  /api/data_landing/rewrite/sources` 按目标存储+采集批次筛可补写来源（关联失败/领取/回执）
+- `POST /api/data_landing/rewrite/failures` 登记失败来源并固化原失败统计
+- `POST /api/data_landing/rewrite/claims` 值班员按目标和批次领用补写范围
+- `POST /api/data_landing/rewrite/corrections` 常规落库同源更正确认（与补写并发时只确认一次，先到者接管在途领取）
+- `POST /api/data_landing/rewrite/submit` 持领取记录补写确认（`read_interrupted` 模拟回执读取中断）
+- `POST /api/data_landing/rewrite/recover` 恢复中断领取并重新关联既有回执
+- `GET  /api/data_landing/rewrite/claims/{id}/takeover` 持旧领取回查被接管范围
+- `GET  /api/data_landing/rewrite/receipts|failures|claims` 分别回查回执、原失败统计与领取记录
+- `POST /api/handoff_pack/confirmed_pack` 交接包只消费已确认回执行
+- `POST /api/handoff_pack/{id}/verify_rows` 按回执真实写入行数核对交接包
+
+规则：补写只能改变本次目标的未确认数据；同一（目标、批次、来源）只允许一条
+确认回执，重复确认幂等返回原回执；确定性测试见
+`backend/tests/test_landing_rewrite.py`。
+
 领域：数据工程
 子方向：数据采集、爬虫与RPA
